@@ -1,0 +1,40 @@
+
+=== Processing Data ===
+Processing train data... Done!
+Processing validation data... Done!
+Processing test data... Done!
+
+=== Creating DataLoaders ===
+
+=== Initializing Model ===
+Loading train dataset... (29000 samples)
+Building vocabulary for train... 5000... 10000... 15000... 20000... 25000... Done! DE vocab: 18669, EN vocab: 9797
+
+Preparation time: 18.55s
+
+=== Starting Training ===
+
+Epoch 1/1
+  [100] loss: 6.2452
+  [100] loss: 6.1063
+Epoch 1/1 - Train Loss: 6.2452 - Val Loss: 6.1063 - Time: 0.94s
+
+=== Final BLEU Evaluation ===
+Traceback (most recent call last):
+  File "/home/aadarsh-ram/Projects/da6401_assignment_3/train.py", line 447, in <module>
+    run_training_experiment(quick_test=quick_test)
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/aadarsh-ram/Projects/da6401_assignment_3/train.py", line 436, in run_training_experiment
+    bleu = evaluate_bleu(model, test_loader, tgt_vocab=tgt_vocab, device=device)
+  File "/home/aadarsh-ram/Projects/da6401_assignment_3/train.py", line 229, in evaluate_bleu
+    bleu_score = bleu.list_bleu(references, hypotheses)
+  File "/home/aadarsh-ram/Projects/da6401_assignment_3/.venv/lib/python3.13/site-packages/bleu/bleu.py", line 81, in list_bleu
+    ref_files, hyp_files = lists2files(refs, [hyp], tmp_dir=folder)
+                           ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/aadarsh-ram/Projects/da6401_assignment_3/.venv/lib/python3.13/site-packages/bleu/bleu.py", line 137, in lists2files
+    _ = [_list2file(*item) for item in zip(refs, ref_files)]
+         ~~~~~~~~~~^^^^^^^
+  File "/home/aadarsh-ram/Projects/da6401_assignment_3/.venv/lib/python3.13/site-packages/bleu/bleu.py", line 128, in _list2file
+    writeout = '\n'.join(sents) + '\n'
+               ~~~~~~~~~^^^^^^^
+TypeError: sequence item 0: expected str instance, list found

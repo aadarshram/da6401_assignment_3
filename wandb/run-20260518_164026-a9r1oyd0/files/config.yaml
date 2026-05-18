@@ -1,0 +1,75 @@
+_wandb:
+    value:
+        cli_version: 0.27.0
+        e:
+            equgjutpj1dcjbzftla56b3421tggav7:
+                codePath: train.py
+                codePathLocal: train.py
+                cpu_count: 12
+                cpu_count_logical: 16
+                cudaVersion: "13.0"
+                disk:
+                    /:
+                        total: "156157632512"
+                        used: "102889463808"
+                email: ramachandranaadarsh@gmail.com
+                executable: /home/aadarsh-ram/Projects/da6401_assignment_3/.venv/bin/python
+                git:
+                    commit: 1a82b04b6d5ea6e1bf7fcc0a1df360b7b0abdd3d
+                    remote: git@github.com:MiRL-IITM/da6401_assignment_3.git
+                gpu: NVIDIA GeForce MX570 A
+                gpu_count: 1
+                gpu_nvidia:
+                    - architecture: Ampere
+                      cudaCores: 2048
+                      memoryTotal: "2147483648"
+                      name: NVIDIA GeForce MX570 A
+                      uuid: GPU-1bcc6f59-1501-0290-d90d-9f4063ebc4bd
+                host: aadarsh-ram-Vostro-5620
+                memory:
+                    total: "16436490240"
+                os: Linux-6.17.0-23-generic-x86_64-with-glibc2.39
+                program: /home/aadarsh-ram/Projects/da6401_assignment_3/train.py
+                python: CPython 3.13.5
+                root: /home/aadarsh-ram/Projects/da6401_assignment_3
+                startedAt: "2026-05-18T11:10:26.312496Z"
+                writerId: equgjutpj1dcjbzftla56b3421tggav7
+        m: []
+        python_version: 3.13.5
+        t:
+            "1":
+                - 1
+                - 33
+                - 49
+                - 51
+            "2":
+                - 1
+                - 33
+                - 49
+                - 51
+            "3":
+                - 16
+            "4": 3.13.5
+            "5": 0.27.0
+            "12": 0.27.0
+            "13": linux-x86_64
+"N":
+    value: 6
+batch_size:
+    value: 64
+d_ff:
+    value: 2048
+d_model:
+    value: 512
+dropout:
+    value: 0.1
+learning_rate:
+    value: 1
+num_epochs:
+    value: 10
+num_heads:
+    value: 8
+src_vocab_size:
+    value: 10000
+tgt_vocab_size:
+    value: 10000

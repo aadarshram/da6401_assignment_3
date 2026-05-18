@@ -1,0 +1,52 @@
+README.md: 1.15kB [00:00, 1.57MB/s]
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+train.jsonl: 4.60MB [00:00, 37.5MB/s]
+val.jsonl: 164kB [00:00, 41.0MB/s]
+test.jsonl: 156kB [00:00, 54.7MB/s]
+Generating train split: 100%|██████████| 29000/29000 [00:00<00:00, 937657.58 examples/s]
+Generating validation split: 100%|███████| 1014/1014 [00:00<00:00, 476155.87 examples/s]
+Generating test split: 100%|█████████████| 1000/1000 [00:00<00:00, 660728.42 examples/s]
+Traceback (most recent call last):
+  File "/home/aadarsh-ram/Projects/da6401_assignment_3/train.py", line 380, in <module>
+    run_training_experiment()
+    ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/home/aadarsh-ram/Projects/da6401_assignment_3/train.py", line 345, in run_training_experiment
+    val_dataset = Multi30kDataset('val')
+  File "/home/aadarsh-ram/Projects/da6401_assignment_3/dataset.py", line 13, in __init__
+    self.dataset = load_dataset('bentrevett/multi30k', split=split)
+                   ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/aadarsh-ram/Projects/da6401_assignment_3/.venv/lib/python3.13/site-packages/datasets/load.py", line 1720, in load_dataset
+    ds = builder_instance.as_dataset(split=split, in_memory=keep_in_memory)
+  File "/home/aadarsh-ram/Projects/da6401_assignment_3/.venv/lib/python3.13/site-packages/datasets/builder.py", line 1025, in as_dataset
+    datasets = map_nested(
+        partial(
+    ...<5 lines>...
+        disable_tqdm=True,
+    )
+  File "/home/aadarsh-ram/Projects/da6401_assignment_3/.venv/lib/python3.13/site-packages/datasets/utils/py_utils.py", line 492, in map_nested
+    mapped = function(data_struct)
+  File "/home/aadarsh-ram/Projects/da6401_assignment_3/.venv/lib/python3.13/site-packages/datasets/builder.py", line 1051, in _build_single_dataset
+    ds = self._as_dataset(
+        split=split,
+        in_memory=in_memory,
+    )
+  File "/home/aadarsh-ram/Projects/da6401_assignment_3/.venv/lib/python3.13/site-packages/datasets/builder.py", line 1077, in _as_dataset
+    dataset_kwargs = ArrowReader(cache_dir, self.info).read(
+        name=dataset_name,
+    ...<2 lines>...
+        in_memory=in_memory,
+    )
+  File "/home/aadarsh-ram/Projects/da6401_assignment_3/.venv/lib/python3.13/site-packages/datasets/arrow_reader.py", line 248, in read
+    files = self.get_file_instructions(name, instructions, split_infos)
+  File "/home/aadarsh-ram/Projects/da6401_assignment_3/.venv/lib/python3.13/site-packages/datasets/arrow_reader.py", line 221, in get_file_instructions
+    file_instructions = make_file_instructions(
+        name, split_infos, instruction, filetype_suffix=self._filetype_suffix, prefix_path=self._path
+    )
+  File "/home/aadarsh-ram/Projects/da6401_assignment_3/.venv/lib/python3.13/site-packages/datasets/arrow_reader.py", line 130, in make_file_instructions
+    absolute_instructions = instruction.to_absolute(name2len)
+  File "/home/aadarsh-ram/Projects/da6401_assignment_3/.venv/lib/python3.13/site-packages/datasets/arrow_reader.py", line 620, in to_absolute
+    return [_rel_to_abs_instr(rel_instr, name2len) for rel_instr in self._relative_instructions]
+            ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "/home/aadarsh-ram/Projects/da6401_assignment_3/.venv/lib/python3.13/site-packages/datasets/arrow_reader.py", line 437, in _rel_to_abs_instr
+    raise ValueError(f'Unknown split "{split}". Should be one of {list(name2len)}.')
+ValueError: Unknown split "val". Should be one of ['train', 'validation', 'test'].

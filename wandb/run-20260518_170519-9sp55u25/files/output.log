@@ -1,0 +1,32 @@
+
+=== Processing Data ===
+Processing train data... Done!
+Processing validation data... Done!
+Processing test data... Done!
+
+=== Creating DataLoaders ===
+
+=== Initializing Model ===
+Loading train dataset... (29000 samples)
+Building vocabulary for train... 5000... 10000... 15000... 20000... 25000... Done! DE vocab: 18669, EN vocab: 9797
+
+Preparation time: 17.75s
+
+=== Starting Training ===
+
+Epoch 1/1
+  [100] loss: 6.2365
+  [100] loss: 6.1777
+Epoch 1/1 - Train Loss: 6.2365 - Val Loss: 6.1777 - Time: 1.27s
+
+=== Final BLEU Evaluation ===
+Traceback (most recent call last):
+  File "/home/aadarsh-ram/Projects/da6401_assignment_3/train.py", line 445, in <module>
+    run_training_experiment(quick_test=quick_test)
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/aadarsh-ram/Projects/da6401_assignment_3/train.py", line 434, in run_training_experiment
+    bleu = evaluate_bleu(model, test_loader, tgt_vocab=test_dataset.en_itos, device=device)
+  File "/home/aadarsh-ram/Projects/da6401_assignment_3/train.py", line 221, in evaluate_bleu
+    start_symbol = tgt_vocab.stoi['<sos>']
+                   ^^^^^^^^^^^^^^
+AttributeError: 'dict' object has no attribute 'stoi'

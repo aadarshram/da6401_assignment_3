@@ -1,0 +1,40 @@
+{
+  "os": "Linux-6.17.0-23-generic-x86_64-with-glibc2.39",
+  "python": "CPython 3.13.5",
+  "startedAt": "2026-05-18T11:10:26.312496Z",
+  "program": "/home/aadarsh-ram/Projects/da6401_assignment_3/train.py",
+  "codePath": "train.py",
+  "codePathLocal": "train.py",
+  "git": {
+    "remote": "git@github.com:MiRL-IITM/da6401_assignment_3.git",
+    "commit": "1a82b04b6d5ea6e1bf7fcc0a1df360b7b0abdd3d"
+  },
+  "email": "ramachandranaadarsh@gmail.com",
+  "root": "/home/aadarsh-ram/Projects/da6401_assignment_3",
+  "host": "aadarsh-ram-Vostro-5620",
+  "executable": "/home/aadarsh-ram/Projects/da6401_assignment_3/.venv/bin/python",
+  "cpu_count": 12,
+  "cpu_count_logical": 16,
+  "gpu": "NVIDIA GeForce MX570 A",
+  "gpu_count": 1,
+  "disk": {
+    "/": {
+      "total": "156157632512",
+      "used": "102889463808"
+    }
+  },
+  "memory": {
+    "total": "16436490240"
+  },
+  "gpu_nvidia": [
+    {
+      "name": "NVIDIA GeForce MX570 A",
+      "memoryTotal": "2147483648",
+      "cudaCores": 2048,
+      "architecture": "Ampere",
+      "uuid": "GPU-1bcc6f59-1501-0290-d90d-9f4063ebc4bd"
+    }
+  ],
+  "cudaVersion": "13.0",
+  "writerId": "equgjutpj1dcjbzftla56b3421tggav7"
+}
