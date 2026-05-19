@@ -1,0 +1,121 @@
+
+=== Processing Data ===
+Processing train data... 5000... 10000... 15000... 20000... 25000... Done!
+Processing validation data... Done!
+Processing test data... Done!
+
+=== Creating DataLoaders ===
+
+=== Initializing Model ===
+
+Preparation time: 15.38s
+
+=== Starting Training ===
+
+Epoch 1/1
+  [100] loss: 9.3385
+  [200] loss: 9.1808
+  [300] loss: 8.8327
+  [400] loss: 8.4107
+  [500] loss: 8.0212
+  [600] loss: 7.6798
+  [700] loss: 7.4231
+  [800] loss: 7.2313
+  [900] loss: 7.0675
+  [1000] loss: 6.9296
+  [1100] loss: 6.8030
+  [1200] loss: 6.6925
+  [1300] loss: 6.6081
+  [1400] loss: 6.5306
+  [1500] loss: 6.4684
+  [1600] loss: 6.4115
+  [1700] loss: 6.3591
+  [1800] loss: 6.2972
+  [1900] loss: 6.2574
+  [2000] loss: 6.2159
+  [2100] loss: 6.1737
+  [2200] loss: 6.1332
+  [2300] loss: 6.0977
+  [2400] loss: 6.0624
+  [2500] loss: 6.0306
+  [2600] loss: 6.0110
+  [2700] loss: 5.9832
+  [2800] loss: 5.9572
+  [2900] loss: 5.9329
+  [3000] loss: 5.9129
+  [3100] loss: 5.8977
+  [3200] loss: 5.8745
+  [3300] loss: 5.8569
+  [3400] loss: 5.8383
+  [3500] loss: 5.8189
+  [3600] loss: 5.8038
+  [3700] loss: 5.7890
+  [3800] loss: 5.7753
+  [3900] loss: 5.7587
+  [4000] loss: 5.7469
+  [4100] loss: 5.7357
+  [4200] loss: 5.7215
+  [4300] loss: 5.7100
+  [4400] loss: 5.6978
+  [4500] loss: 5.6809
+  [4600] loss: 5.6719
+  [4700] loss: 5.6623
+  [4800] loss: 5.6519
+  [4900] loss: 5.6412
+  [5000] loss: 5.6299
+  [5100] loss: 5.6182
+  [5200] loss: 5.6103
+  [5300] loss: 5.6021
+  [5400] loss: 5.5939
+  [5500] loss: 5.5817
+  [5600] loss: 5.5739
+  [5700] loss: 5.5653
+  [5800] loss: 5.5538
+  [5900] loss: 5.5454
+  [6000] loss: 5.5361
+  [6100] loss: 5.5267
+  [6200] loss: 5.5202
+  [6300] loss: 5.5129
+  [6400] loss: 5.5067
+  [6500] loss: 5.4987
+  [6600] loss: 5.4902
+  [6700] loss: 5.4824
+  [6800] loss: 5.4748
+  [6900] loss: 5.4672
+  [7000] loss: 5.4604
+  [7100] loss: 5.4561
+  [7200] loss: 5.4498
+Traceback (most recent call last):
+  File "/home/aadarsh-ram/Projects/da6401_assignment_3/train.py", line 447, in <module>
+    run_training_experiment(quick_test=quick_test)
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/aadarsh-ram/Projects/da6401_assignment_3/train.py", line 425, in run_training_experiment
+    train_loss = run_epoch(train_loader, model, loss_fn, optimizer, scheduler, epoch, is_train=True, device=device)
+  File "/home/aadarsh-ram/Projects/da6401_assignment_3/train.py", line 120, in run_epoch
+    loss.backward()
+    ~~~~~~~~~~~~~^^
+  File "/home/aadarsh-ram/Projects/da6401_assignment_3/.venv/lib/python3.13/site-packages/torch/_tensor.py", line 631, in backward
+    torch.autograd.backward(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        self, gradient, retain_graph, create_graph, inputs=inputs
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/aadarsh-ram/Projects/da6401_assignment_3/.venv/lib/python3.13/site-packages/torch/autograd/__init__.py", line 379, in backward
+    _engine_run_backward(
+    ~~~~~~~~~~~~~~~~~~~~^
+        tensors,
+        ^^^^^^^^
+    ...<5 lines>...
+        accumulate_grad=True,
+        ^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/aadarsh-ram/Projects/da6401_assignment_3/.venv/lib/python3.13/site-packages/torch/autograd/graph.py", line 882, in _engine_run_backward
+    return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        t_outputs, *args, **kwargs
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )  # Calls into the C++ engine to run the backward pass
+    ^
+KeyboardInterrupt
