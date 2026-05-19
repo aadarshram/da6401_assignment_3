@@ -1,11 +1,17 @@
+import os
+
 from datasets import load_dataset
 import spacy
 from collections import Counter
 import torch
 
+# Pre-built Multi30k train vocab (~0.03s load); required for fast infer()
+VOCAB_CACHE_PATH = os.path.join(os.path.dirname(__file__), "vocab", "multi30k_vocab.pt")
+
 # Global tokenizers
 _spacy_en = None
 _spacy_de = None
+_infer_vocab = None
 
 def _get_spacy_tokenizers():
     """Initialize spacy tokenizers once and cache them."""
@@ -15,6 +21,56 @@ def _get_spacy_tokenizers():
     if _spacy_de is None:
         _spacy_de = spacy.blank('de')
     return _spacy_en, _spacy_de
+
+
+def get_infer_vocab():
+    """
+    Return vocab + spacy tokenizers for inference without loading HF data
+    or rebuilding vocab from 29k sentences (autograder 3s limit).
+    """
+    global _infer_vocab
+    if _infer_vocab is not None:
+        return _infer_vocab
+
+    vocab = Multi30kDataset.__new__(Multi30kDataset)
+    vocab.spacy_en, vocab.spacy_de = _get_spacy_tokenizers()
+
+    if not os.path.isfile(VOCAB_CACHE_PATH):
+        raise FileNotFoundError(
+            f"Missing {VOCAB_CACHE_PATH}. Run once: "
+            "python -c \"from dataset import build_vocab_cache; build_vocab_cache()\""
+        )
+
+    try:
+        cache = torch.load(VOCAB_CACHE_PATH, map_location="cpu", weights_only=False)
+    except TypeError:
+        cache = torch.load(VOCAB_CACHE_PATH, map_location="cpu")
+    vocab.de_stoi = cache["de_stoi"]
+    vocab.en_stoi = cache["en_stoi"]
+    vocab.de_itos = cache["de_itos"]
+    vocab.en_itos = cache["en_itos"]
+    vocab.special_tokens = cache["special_tokens"]
+    _infer_vocab = vocab
+    return _infer_vocab
+
+
+def build_vocab_cache(path: str = VOCAB_CACHE_PATH) -> str:
+    """Build and save Multi30k train vocabulary (for local regeneration only)."""
+    ds = Multi30kDataset("train")
+    ds.build_vocab()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    torch.save(
+        {
+            "de_stoi": ds.de_stoi,
+            "en_stoi": ds.en_stoi,
+            "de_itos": ds.de_itos,
+            "en_itos": ds.en_itos,
+            "special_tokens": ds.special_tokens,
+        },
+        path,
+    )
+    return path
+
 
 class Multi30kDataset:
     def __init__(self, split='train', max_samples=None):

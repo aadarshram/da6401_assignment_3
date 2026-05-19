@@ -583,15 +583,9 @@ class Transformer(nn.Module):
                 self.load_state_dict(ckpt)
                 self._checkpoint_meta = None
 
-        self._tokenizer = None  # lazy: built on first infer() call
-
-    def _get_tokenizer(self):
-        """Lazy-load Multi30k vocab/tokenizers for infer() only."""
-        if self._tokenizer is None:
-            from dataset import Multi30kDataset
-            self._tokenizer = Multi30kDataset()
-            self._tokenizer.build_vocab()
-        return self._tokenizer
+        # Preload cached Multi30k vocab (~0.03s) so infer() meets autograder time limits
+        from dataset import get_infer_vocab
+        self._tokenizer = get_infer_vocab()
 
     # ── AUTOGRADER HOOKS ── keep these signatures exactly ─────────────
 
@@ -665,6 +659,7 @@ class Transformer(nn.Module):
         return logits
 
 
+    @torch.inference_mode()
     def infer(self, src_sentence: str) -> str:
         """
         Translates a German sentence to English using greedy autoregressive decoding.
@@ -676,27 +671,32 @@ class Transformer(nn.Module):
         Returns:
             The fully translated English string, detokenized and clean.
         """
-        tokenizer = self._get_tokenizer()
+        self.eval()
+        tokenizer = self._tokenizer
         pad_idx = tokenizer.special_tokens['<pad>']
+        sos = tokenizer.special_tokens['<sos>']
+        eos = tokenizer.special_tokens['<eos>']
+        unk = tokenizer.special_tokens['<unk>']
         # Raw i/p to token indices
-        src_tokens = [tokenizer.de_stoi.get(token.text.lower(), tokenizer.special_tokens['<unk>']) for token in tokenizer.spacy_de(src_sentence)]
-        src_tokens = [tokenizer.special_tokens['<sos>']] + src_tokens + [tokenizer.special_tokens['<eos>']]
+        src_tokens = [
+            tokenizer.de_stoi.get(token.text.lower(), unk)
+            for token in tokenizer.spacy_de(src_sentence)
+        ]
+        src_tokens = [sos] + src_tokens + [eos]
         device = next(self.parameters()).device
-        src_tensor = torch.tensor(src_tokens, device=device).unsqueeze(0) # shape: [1, src_len]
-        src_mask = make_src_mask(src_tensor, pad_idx=pad_idx) # shape: [1, 1, 1, src_len]
-        # Encode source sentence
-        memory = self.encode(src_tensor, src_mask) # shape: [1, src_len, d_model]
-        # Autoregressive decoding
-        tgt_tokens = [tokenizer.special_tokens['<sos>']]
-        for _ in range(100): # max decoding steps to prevent infinite loop
-            tgt_tensor = torch.tensor(tgt_tokens, device=device).unsqueeze(0) # shape: [1, tgt_len]
-            tgt_mask = make_tgt_mask(tgt_tensor, pad_idx=pad_idx) # shape: [1, 1, tgt_len, tgt_len]
-            logits = self.decode(memory, src_mask, tgt_tensor, tgt_mask) # shape: [1, tgt_len, tgt_vocab_size]
-            next_token = logits[:, -1, :].argmax(dim=-1).item() # Greedy decoding
-            if next_token == tokenizer.special_tokens['<eos>']:
+        src_tensor = torch.tensor(src_tokens, device=device).unsqueeze(0)
+        src_mask = make_src_mask(src_tensor, pad_idx=pad_idx)
+        memory = self.encode(src_tensor, src_mask)
+        ys = torch.tensor([[sos]], dtype=torch.long, device=device)
+        for _ in range(99):
+            tgt_mask = make_tgt_mask(ys, pad_idx=pad_idx)
+            logits = self.decode(memory, src_mask, ys, tgt_mask)
+            next_token = logits[:, -1, :].argmax(dim=-1)
+            ys = torch.cat([ys, next_token.unsqueeze(1)], dim=1)
+            if next_token.item() == eos:
                 break
-            tgt_tokens.append(next_token)
-        # Convert token indices back to words
-        tgt_words = [tokenizer.en_itos.get(idx, '<unk>') for idx in tgt_tokens[1:]] # Skip <sos>
+        tgt_words = [tokenizer.en_itos.get(idx, '<unk>') for idx in ys.squeeze().tolist()[1:]]
+        if tgt_words and tgt_words[-1] == '<eos>':
+            tgt_words = tgt_words[:-1]
         return ' '.join(tgt_words)
 

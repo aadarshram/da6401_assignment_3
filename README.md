@@ -16,5 +16,14 @@ assignment3/
 ├── model.py           # Core Transformer architecture (Encoders, Decoders, Multi-Head Attention)
 ├── utils.py           # Label Smoothing, Noam Scheduler, Masking Utilities
 ├── dataset.py         # Multi30k dataset loading and spacy tokenization
+├── vocab/
+│   └── multi30k_vocab.pt  # Pre-built train vocab (required for fast infer())
 ├── train.py           # Training loops and Greedy Decoding inference
+```
+
+Regenerate the vocab cache after changing tokenization:
+
+```bash
+python -c "from dataset import build_vocab_cache; build_vocab_cache()"
+```
 ```
