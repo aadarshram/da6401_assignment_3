@@ -30,6 +30,7 @@ _PRETRAINED_CHECKPOINT_DRIVE_ID = "1pORECSfgjX-UaRhCMuXcTRGHLPOV7PPy"
 # Multi30k vocab sizes (bentrevett/multi30k, spacy blank tokenizers, train split)
 MULTI30K_SRC_VOCAB_SIZE = 18_669  # German (de)
 MULTI30K_TGT_VOCAB_SIZE = 9_797   # English (en)
+INFER_MAX_LEN = 40  # Multi30k targets are short; keeps autograder under 3s
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -180,7 +181,24 @@ class MultiHeadAttention(nn.Module):
         self.W_K = nn.Linear(d_model, d_model)
         self.W_V = nn.Linear(d_model, d_model)
         self.W_O = nn.Linear(d_model, d_model)
-    
+        self._incremental = False
+        self._kv_cache: Optional[Tuple[torch.Tensor, torch.Tensor]] = None
+
+    def start_incremental(self) -> None:
+        """Enable KV caching for fast autoregressive inference (infer only)."""
+        self._incremental = True
+        self._kv_cache = None
+
+    def stop_incremental(self) -> None:
+        self._incremental = False
+        self._kv_cache = None
+
+    def _project(self, x: torch.Tensor, linear: nn.Linear) -> torch.Tensor:
+        batch_size = x.size(0)
+        return self.dropout(
+            linear(x).view(batch_size, -1, self.num_heads, self.d_k).transpose(1, 2)
+        )
+
     def forward(
         self,
         query: torch.Tensor,
@@ -201,11 +219,26 @@ class MultiHeadAttention(nn.Module):
             output : shape [batch, seq_q, d_model]
 
         """
-        batch_size = query.size(0)
-        # Linear projections for Q, K, V
-        Q = self.dropout(self.W_Q(query).view(batch_size, -1, self.num_heads, self.d_k).transpose(1, 2)) # shape: [batch, num_heads, seq_q, d_k]
-        K = self.dropout(self.W_K(key).view(batch_size, -1, self.num_heads, self.d_k).transpose(1, 2))   # shape: [batch, num_heads, seq_k, d_k]
-        V = self.dropout(self.W_V(value).view(batch_size, -1, self.num_heads, self.d_v).transpose(1, 2)) # shape: [batch, num_heads, seq_k, d_v]
+        Q = self._project(query, self.W_Q)
+        is_self_attn = query is key
+
+        if self._incremental and self._kv_cache is not None:
+            if is_self_attn:
+                K_new = self._project(key, self.W_K)
+                V_new = self._project(value, self.W_V)
+                K = torch.cat([self._kv_cache[0], K_new], dim=2)
+                V = torch.cat([self._kv_cache[1], V_new], dim=2)
+                self._kv_cache = (K, V)
+            else:
+                K, V = self._kv_cache
+        else:
+            K = self._project(key, self.W_K)
+            V = self._project(value, self.W_V)
+            if self._incremental:
+                self._kv_cache = (K, V)
+
+        if mask is not None and self._incremental and Q.size(2) == 1 and mask.dim() == 4:
+            mask = mask[:, :, -1:, :]
 
         # Apply scaled dot-product attention to each head
         attn_output, attn_w = scaled_dot_product_attention(
@@ -214,7 +247,7 @@ class MultiHeadAttention(nn.Module):
         if getattr(self, 'store_attn_weights', False):
             self.last_attn_weights = attn_w.detach()
         # Concatenate heads and project
-        attn_output = attn_output.transpose(1, 2).contiguous().view(batch_size, -1, self.d_model) # shape: [batch, seq_q, d_model]
+        attn_output = attn_output.transpose(1, 2).contiguous().view(query.size(0), -1, self.d_model)
         attn_output = self.W_O(attn_output) # shape: [batch, seq_q, d_model]
 
         return attn_output
@@ -452,6 +485,20 @@ class DecoderLayer(nn.Module):
 
         return x
 
+    def forward_step(
+        self,
+        x: torch.Tensor,
+        memory: torch.Tensor,
+        src_mask: torch.Tensor,
+    ) -> torch.Tensor:
+        """Single decoder step with KV cache (x is [batch, 1, d_model])."""
+        self_attn_output = self.self_attn(x, x, x, None)
+        x = self.norm_self_attn(x + self_attn_output)
+        cross_attn_output = self.cross_attn(x, memory, memory, src_mask)
+        x = self.norm_cross_attn(x + cross_attn_output)
+        ffn_output = self.ffn(x)
+        return self.norm_ffn(x + ffn_output)
+
 
 # ══════════════════════════════════════════════════════════════════════
 #  ENCODER & DECODER STACKS
@@ -504,6 +551,16 @@ class Decoder(nn.Module):
         """
         for layer in self.layers:
             x = layer(x, memory, src_mask, tgt_mask)
+        return self.norm(x)
+
+    def forward_step(
+        self,
+        x: torch.Tensor,
+        memory: torch.Tensor,
+        src_mask: torch.Tensor,
+    ) -> torch.Tensor:
+        for layer in self.layers:
+            x = layer.forward_step(x, memory, src_mask)
         return self.norm(x)
 
 
@@ -583,9 +640,38 @@ class Transformer(nn.Module):
                 self.load_state_dict(ckpt)
                 self._checkpoint_meta = None
 
-        # Preload cached Multi30k vocab (~0.03s) so infer() meets autograder time limits
-        from dataset import get_infer_vocab
-        self._tokenizer = get_infer_vocab()
+        self._tokenizer = None  # lazy: fast Transformer() init for autograder
+
+    def _get_tokenizer(self):
+        if self._tokenizer is None:
+            from dataset import get_infer_vocab
+            self._tokenizer = get_infer_vocab()
+        return self._tokenizer
+
+    def _infer_begin(self) -> None:
+        for layer in self.decoder.layers:
+            layer.self_attn.start_incremental()
+            layer.cross_attn.start_incremental()
+
+    def _infer_end(self) -> None:
+        for layer in self.decoder.layers:
+            layer.self_attn.stop_incremental()
+            layer.cross_attn.stop_incremental()
+
+    def _embed_tgt(self, tokens: torch.Tensor) -> torch.Tensor:
+        x = self.tgt_embedding(tokens) * math.sqrt(self.d_model)
+        return self.positional_encoding(x)
+
+    def _decode_step(
+        self,
+        token: torch.Tensor,
+        memory: torch.Tensor,
+        src_mask: torch.Tensor,
+    ) -> torch.Tensor:
+        """Run one greedy decode step; returns logits [batch, 1, vocab]."""
+        x = self._embed_tgt(token)
+        x = self.decoder.forward_step(x, memory, src_mask)
+        return self.output_projection(x)
 
     # ── AUTOGRADER HOOKS ── keep these signatures exactly ─────────────
 
@@ -672,12 +758,11 @@ class Transformer(nn.Module):
             The fully translated English string, detokenized and clean.
         """
         self.eval()
-        tokenizer = self._tokenizer
+        tokenizer = self._get_tokenizer()
         pad_idx = tokenizer.special_tokens['<pad>']
         sos = tokenizer.special_tokens['<sos>']
         eos = tokenizer.special_tokens['<eos>']
         unk = tokenizer.special_tokens['<unk>']
-        # Raw i/p to token indices
         src_tokens = [
             tokenizer.de_stoi.get(token.text.lower(), unk)
             for token in tokenizer.spacy_de(src_sentence)
@@ -687,16 +772,21 @@ class Transformer(nn.Module):
         src_tensor = torch.tensor(src_tokens, device=device).unsqueeze(0)
         src_mask = make_src_mask(src_tensor, pad_idx=pad_idx)
         memory = self.encode(src_tensor, src_mask)
-        ys = torch.tensor([[sos]], dtype=torch.long, device=device)
-        for _ in range(99):
-            tgt_mask = make_tgt_mask(ys, pad_idx=pad_idx)
-            logits = self.decode(memory, src_mask, ys, tgt_mask)
-            next_token = logits[:, -1, :].argmax(dim=-1)
-            ys = torch.cat([ys, next_token.unsqueeze(1)], dim=1)
-            if next_token.item() == eos:
-                break
-        tgt_words = [tokenizer.en_itos.get(idx, '<unk>') for idx in ys.squeeze().tolist()[1:]]
-        if tgt_words and tgt_words[-1] == '<eos>':
-            tgt_words = tgt_words[:-1]
+
+        self._infer_begin()
+        try:
+            token = torch.tensor([[sos]], dtype=torch.long, device=device)
+            generated = [sos]
+            for _ in range(INFER_MAX_LEN - 1):
+                logits = self._decode_step(token, memory, src_mask)
+                next_token = logits[:, -1, :].argmax(dim=-1).item()
+                if next_token == eos:
+                    break
+                generated.append(next_token)
+                token = torch.tensor([[next_token]], dtype=torch.long, device=device)
+        finally:
+            self._infer_end()
+
+        tgt_words = [tokenizer.en_itos.get(idx, '<unk>') for idx in generated[1:]]
         return ' '.join(tgt_words)
 
