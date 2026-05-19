@@ -24,6 +24,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+# Google Drive file id for the released pretrained checkpoint (.pt)
+_PRETRAINED_CHECKPOINT_DRIVE_ID = "1pORECSfgjX-UaRhCMuXcTRGHLPOV7PPy"
+
 
 # ══════════════════════════════════════════════════════════════════════
 #   STANDALONE ATTENTION FUNCTION  
@@ -555,12 +558,26 @@ class Transformer(nn.Module):
         # Final linear layer to project decoder output to target vocab size
         self.output_projection = nn.Linear(d_model, tgt_vocab_size)
 
-        # init should also load the model weights if checkpoint path provided, download the .pth file like this
+        # Download and load pretrained weights when checkpoint_path is provided
         if checkpoint_path is not None:
-            # gdown.download(id="<.pth drive id>", output=checkpoint_path, quiet=False) # TODO: Implement with with drive model later
-            # Load the checkpoint
-            self.ckpt_weights = torch.load(checkpoint_path, map_location=torch.device('cpu'))
-            self.load_state_dict(self.ckpt_weights)
+            if not os.path.isfile(checkpoint_path):
+                gdown.download(
+                    id=_PRETRAINED_CHECKPOINT_DRIVE_ID,
+                    output=checkpoint_path,
+                    quiet=False,
+                )
+            ckpt = torch.load(checkpoint_path, map_location=torch.device("cpu"))
+            if isinstance(ckpt, dict) and "model_state_dict" in ckpt:
+                self.load_state_dict(ckpt["model_state_dict"])
+                self._checkpoint_meta = {
+                    k: ckpt[k]
+                    for k in ("epoch", "val_bleu", "model_config", "train_config")
+                    if k in ckpt
+                }
+            else:
+                # Raw state dict fallback
+                self.load_state_dict(ckpt)
+                self._checkpoint_meta = None
 
         self._tokenizer = None  # lazy: built on first infer() call
 
