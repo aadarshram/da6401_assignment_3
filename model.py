@@ -620,31 +620,27 @@ class Transformer(nn.Module):
         self.output_projection = nn.Linear(d_model, tgt_vocab_size)
 
         _root = os.path.dirname(__file__)
-        if checkpoint_path is None:
-            for name in ("model_weights.pt", "checkpoint.pt"):
-                candidate = os.path.join(_root, name)
-                if os.path.isfile(candidate):
-                    checkpoint_path = candidate
-                    break
 
-        if checkpoint_path is not None:
-            if not os.path.isfile(checkpoint_path):
-                gdown.download(
-                    id=_PRETRAINED_CHECKPOINT_DRIVE_ID,
-                    output=checkpoint_path,
-                    quiet=False,
-                )
-            ckpt = torch.load(checkpoint_path, map_location=torch.device("cpu"))
-            if isinstance(ckpt, dict) and "model_state_dict" in ckpt:
-                self.load_state_dict(ckpt["model_state_dict"])
-                self._checkpoint_meta = {
-                    k: ckpt[k]
-                    for k in ("epoch", "val_bleu", "model_config", "train_config")
-                    if k in ckpt
-                }
-            else:
-                self.load_state_dict(ckpt)
-                self._checkpoint_meta = None
+        if checkpoint_path is None:
+            checkpoint_path = os.path.join(_root, "model_weights.pt")
+
+        if not os.path.isfile(checkpoint_path):
+            gdown.download(
+                id=_PRETRAINED_CHECKPOINT_DRIVE_ID,
+                output=checkpoint_path,
+                quiet=False,
+            )
+        ckpt = torch.load(checkpoint_path, map_location=torch.device("cpu"))
+        if isinstance(ckpt, dict) and "model_state_dict" in ckpt:
+            self.load_state_dict(ckpt["model_state_dict"])
+            self._checkpoint_meta = {
+                k: ckpt[k]
+                for k in ("epoch", "val_bleu", "model_config", "train_config")
+                if k in ckpt
+            }
+        else:
+            self.load_state_dict(ckpt)
+            self._checkpoint_meta = None
 
         self._tokenizer = None  # lazy: fast Transformer() init for autograder
 
