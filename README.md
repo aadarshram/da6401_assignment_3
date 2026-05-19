@@ -26,4 +26,23 @@ Regenerate the vocab cache after changing tokenization:
 ```bash
 python -c "from dataset import build_vocab_cache; build_vocab_cache()"
 ```
+
+### Autograder submission (BLEU ≥ 20)
+
+The autograder calls `model.infer(german_sentence)` on a **trained** model. BLEU ≈ 0 means weights were **not loaded** (random init).
+
+Include in your zip:
+
+| File | Purpose |
+|------|---------|
+| `checkpoint.pt` | Trained weights (`save_checkpoint` format) |
+| `vocab/multi30k_vocab.pt` | Fast infer tokenization |
+
+After training, copy your best file to the name the autograder expects:
+
+```bash
+cp best_checkpoint_exp1.pt checkpoint.pt
+```
+
+`Transformer()` auto-loads `checkpoint.pt` next to `model.py` if present; the autograder may also call `load_checkpoint("checkpoint.pt", model)`.
 ```

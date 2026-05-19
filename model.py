@@ -619,7 +619,12 @@ class Transformer(nn.Module):
         # Final linear layer to project decoder output to target vocab size
         self.output_projection = nn.Linear(d_model, tgt_vocab_size)
 
-        # Download and load pretrained weights when checkpoint_path is provided
+        # Load weights: explicit path, or checkpoint.pt beside model.py (autograder)
+        if checkpoint_path is None:
+            _default_ckpt = os.path.join(os.path.dirname(__file__), "checkpoint.pt")
+            if os.path.isfile(_default_ckpt):
+                checkpoint_path = _default_ckpt
+
         if checkpoint_path is not None:
             if not os.path.isfile(checkpoint_path):
                 gdown.download(
@@ -662,14 +667,28 @@ class Transformer(nn.Module):
         x = self.tgt_embedding(tokens) * math.sqrt(self.d_model)
         return self.positional_encoding(x)
 
+    def _embed_tgt_step(self, token: torch.Tensor, position: int) -> torch.Tensor:
+        """Embed a single target token with the correct positional index."""
+        x = self.tgt_embedding(token) * math.sqrt(self.d_model)
+        pe = self.positional_encoding
+        if hasattr(pe, "pe") and pe.pe.dim() == 2:
+            # Sinusoidal: registered buffer [max_len, d_model]
+            x = x + pe.pe[position : position + 1].unsqueeze(0)
+        else:
+            # Learned positional embedding
+            pos = torch.tensor([position], device=token.device)
+            x = x + pe.pe(pos).unsqueeze(0)
+        return x
+
     def _decode_step(
         self,
         token: torch.Tensor,
+        position: int,
         memory: torch.Tensor,
         src_mask: torch.Tensor,
     ) -> torch.Tensor:
         """Run one greedy decode step; returns logits [batch, 1, vocab]."""
-        x = self._embed_tgt(token)
+        x = self._embed_tgt_step(token, position)
         x = self.decoder.forward_step(x, memory, src_mask)
         return self.output_projection(x)
 
@@ -777,9 +796,9 @@ class Transformer(nn.Module):
         try:
             token = torch.tensor([[sos]], dtype=torch.long, device=device)
             generated = [sos]
-            for _ in range(INFER_MAX_LEN - 1):
-                logits = self._decode_step(token, memory, src_mask)
-                next_token = logits[:, -1, :].argmax(dim=-1).item()
+            for step in range(1, INFER_MAX_LEN):
+                logits = self._decode_step(token, step - 1, memory, src_mask)
+                next_token = logits[:, 0, :].argmax(dim=-1).item()
                 if next_token == eos:
                     break
                 generated.append(next_token)
