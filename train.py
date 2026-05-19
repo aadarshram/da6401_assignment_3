@@ -15,6 +15,8 @@ AUTOGRADER CONTRACT (DO NOT MODIFY SIGNATURES):
   └─────────────────────────────────────────────────────────────────────┘
 """
 
+import os
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -38,6 +40,22 @@ def _make_tgt_vocab(dataset) -> object:
         {'stoi': dataset.en_stoi, 'itos': {idx: token for token, idx in dataset.en_stoi.items()}},
     )()
 
+
+def _indices_to_sentence(indices, vocab, skip_indices: set[int]) -> str:
+    """Convert token indices to a space-separated sentence, skipping special tokens."""
+    words = []
+    for idx in indices:
+        idx = int(idx)
+        if idx in skip_indices:
+            continue
+        words.append(vocab.itos[idx])
+    return " ".join(words)
+
+
+def _wandb_log(metrics: dict, step: int) -> None:
+    """Log to wandb with a monotonically increasing training step."""
+    wandb.log(metrics, step=step)
+
 def _log_qk_grad_norms(model: Transformer, step: int) -> None:
     """Mean L2 norm of W_Q and W_K gradients across all attention modules."""
     q_norms, k_norms = [], []
@@ -48,12 +66,12 @@ def _log_qk_grad_norms(model: Transformer, step: int) -> None:
             if module.W_K.weight.grad is not None:
                 k_norms.append(module.W_K.weight.grad.norm().item())
     if q_norms:
-        wandb.log(
+        _wandb_log(
             {
                 'grad_norm/W_Q': sum(q_norms) / len(q_norms),
                 'grad_norm/W_K': sum(k_norms) / len(k_norms),
             },
-            step=step,
+            step,
         )
 
 def _current_lr(optimizer: torch.optim.Optimizer) -> float:
@@ -82,7 +100,7 @@ def _log_attention_heatmaps(model: Transformer, step: int, sample_idx: int = 0) 
         logs[f'attention_heatmap/encoder_last/head_{head_idx}'] = wandb.Image(fig)
         plt.close(fig)
     if logs:
-        wandb.log(logs, step=step)
+        _wandb_log(logs, step)
 
 @torch.no_grad()
 def _capture_attention_maps(
@@ -119,7 +137,7 @@ def _log_correct_token_prob(
     if mask.sum() == 0:
         return 0.0
     mean_prob = correct_prob[mask].mean().item()
-    wandb.log({'correct_token_prob': mean_prob}, step=step)
+    _wandb_log({'correct_token_prob': mean_prob}, step)
     return mean_prob
 
 # ══════════════════════════════════════════════════════════════════════
@@ -216,6 +234,10 @@ def run_epoch(
             output = model(src, tgt_in, src_mask, tgt_mask) # [batch, tgt_len-1, vocab_size]; teacher forcing
             loss = loss_fn(output.view(-1, output.size(-1)), tgt[:, 1:].reshape(-1)) # shift target by 1 for teacher forcing
 
+            pad_mask = (tgt[:, 1:] != loss_fn.pad_idx)
+            n_tokens = pad_mask.sum().item()
+            batch_loss = loss.item()
+
             if is_train:
                 if log_correct_token_prob:
                     _log_correct_token_prob(
@@ -228,21 +250,15 @@ def run_epoch(
                 optimizer.step()
                 if scheduler is not None:
                     scheduler.step()
-                global_step += 1
                 if log_lr:
-                    wandb.log({'learning_rate': _current_lr(optimizer)}, step=global_step - 1)
+                    _wandb_log({'learning_rate': _current_lr(optimizer)}, global_step)
+                if log_batch_metrics:
+                    _wandb_log({'train_loss/batch': batch_loss}, global_step)
+                global_step += 1
 
-        pad_mask = (tgt[:, 1:] != loss_fn.pad_idx)
-        n_tokens = pad_mask.sum().item()
-        batch_loss = loss.item()
         total_loss += batch_loss * n_tokens
         total_tokens += n_tokens
         num_batches += 1
-
-        if log_batch_metrics:
-            prefix = 'train' if is_train else 'val'
-            step = (global_step - 1) if is_train else global_step + batch_idx
-            wandb.log({f'{prefix}_loss/batch': batch_loss}, step=step)
         
         # Progress indicator every 100 batches
         if (batch_idx + 1) % 100 == 0:
@@ -255,6 +271,58 @@ def run_epoch(
 # ══════════════════════════════════════════════════════════════════════
 #   GREEDY DECODING  
 # ══════════════════════════════════════════════════════════════════════
+
+def batch_greedy_decode(
+    model: Transformer,
+    src: torch.Tensor,
+    src_mask: torch.Tensor,
+    max_len: int,
+    start_symbol: int,
+    end_symbol: int,
+    pad_idx: int = 1,
+) -> list[torch.Tensor]:
+    """
+    Batched greedy decoding for a full source batch.
+
+    Args:
+        model        : Trained Transformer.
+        src          : Source token indices, shape [batch, src_len].
+        src_mask     : shape [batch, 1, 1, src_len].
+        max_len      : Maximum number of tokens to generate per sentence.
+        start_symbol : Vocabulary index of <sos>.
+        end_symbol   : Vocabulary index of <eos>.
+        pad_idx      : Padding index used for finished rows in the decoder input.
+
+    Returns:
+        List of length batch; each element has shape [1, out_len] and includes
+        start_symbol, stops at (and includes) end_symbol when generated.
+    """
+    model.eval()
+    batch_size = src.size(0)
+    device = src.device
+
+    ys = torch.full((batch_size, 1), start_symbol, dtype=torch.long, device=device)
+    finished = torch.zeros(batch_size, dtype=torch.bool, device=device)
+
+    for _ in range(max_len - 1):
+        if finished.all():
+            break
+        tgt_mask = make_tgt_mask(ys, pad_idx=pad_idx)
+        out = model(src, ys, src_mask, tgt_mask)
+        next_word = out[:, -1, :].argmax(dim=-1)
+        # Keep feeding pad to finished rows so they do not affect active rows
+        next_word = next_word.masked_fill(finished, pad_idx)
+        finished = finished | (next_word == end_symbol)
+        ys = torch.cat([ys, next_word.unsqueeze(1)], dim=1)
+
+    results: list[torch.Tensor] = []
+    for i in range(batch_size):
+        seq = ys[i].tolist()
+        if end_symbol in seq:
+            seq = seq[: seq.index(end_symbol) + 1]
+        results.append(torch.tensor(seq, dtype=torch.long, device=device).unsqueeze(0))
+    return results
+
 
 def greedy_decode(
     model: Transformer,
@@ -283,23 +351,12 @@ def greedy_decode(
              or when max_len is reached.
 
     """
-    model.eval()
-    # Initialize with <sos>, pre-allocated tensor
-    ys = torch.full((1, 1), start_symbol, dtype=torch.long, device=device)
-    
-    for i in range(max_len - 1):  # max_len - 1 excluding <sos>
-        tgt_mask = make_tgt_mask(ys)
-        out = model(src, ys, src_mask, tgt_mask)  # [1, seq_len, vocab_size]
-        prob = out[:, -1, :]  # [1, vocab_size] — get last time step
-        _, next_word = torch.max(prob, dim=1)  # greedy: pick highest prob token
-        next_word_item = next_word.item()
-        
-        # Append next token
-        ys = torch.cat([ys, torch.tensor([[next_word_item]], dtype=torch.long, device=device)], dim=1)
-        
-        if next_word_item == end_symbol:
-            break  # stop if <eos> generated
-    return ys
+    if src.device.type == "cpu" and device != "cpu":
+        src = src.to(device)
+        src_mask = src_mask.to(device)
+    return batch_greedy_decode(
+        model, src, src_mask, max_len, start_symbol, end_symbol, pad_idx=1
+    )[0]
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -312,6 +369,7 @@ def evaluate_bleu(
     tgt_vocab,
     device: str = "cpu",
     max_len: int = 100,
+    pad_idx: int = 1,
 ) -> float:
     """
     Evaluate translation quality with corpus-level BLEU score.
@@ -334,15 +392,26 @@ def evaluate_bleu(
     references = []
     hypotheses = []
 
+    start_symbol = tgt_vocab.stoi['<sos>']
+    end_symbol = tgt_vocab.stoi['<eos>']
+    skip_indices = {start_symbol, end_symbol, pad_idx, tgt_vocab.stoi.get('<unk>', 0)}
+
     for src, tgt in test_dataloader:
         src, tgt = src.to(device), tgt.to(device)
-        src_mask = make_src_mask(src)
-        start_symbol = tgt_vocab.stoi['<sos>']
-        end_symbol = tgt_vocab.stoi['<eos>']
-        pred_tokens = greedy_decode(model, src, src_mask, max_len, start_symbol, end_symbol, device) # [1, out_len]
-        pred_sentence = [tgt_vocab.itos[idx] for idx in pred_tokens.squeeze().tolist() if idx not in (start_symbol, end_symbol)]
-        references.append(" ".join([tgt_vocab.itos[idx] for idx in tgt.squeeze().tolist() if idx not in (start_symbol, end_symbol)]))
-        hypotheses.append(" ".join(pred_sentence))
+        src_mask = make_src_mask(src, pad_idx=pad_idx)
+        pred_batch = batch_greedy_decode(
+            model, src, src_mask, max_len, start_symbol, end_symbol, pad_idx=pad_idx
+        )
+        for i, pred_tokens in enumerate(pred_batch):
+            references.append(
+                _indices_to_sentence(tgt[i].tolist(), tgt_vocab, skip_indices)
+            )
+            hypotheses.append(
+                _indices_to_sentence(pred_tokens.squeeze().tolist(), tgt_vocab, skip_indices)
+            )
+
+    if not references:
+        return 0.0
 
     bleu_score = bleu.list_bleu(references, hypotheses)
     return bleu_score
@@ -426,13 +495,55 @@ def load_checkpoint(
         epoch : The epoch at which the checkpoint was saved (int).
 
     """
-    ckpt_dict = torch.load(path, map_location=torch.device('cpu'))
+    device = next(model.parameters()).device
+    ckpt_dict = torch.load(path, map_location=device)
     model.load_state_dict(ckpt_dict['model_state_dict'])
     if optimizer is not None and ckpt_dict['optimizer_state_dict'] is not None:
         optimizer.load_state_dict(ckpt_dict['optimizer_state_dict'])
     if scheduler is not None and ckpt_dict['scheduler_state_dict'] is not None:
         scheduler.load_state_dict(ckpt_dict['scheduler_state_dict'])
     return ckpt_dict['epoch']
+
+
+def _upload_best_checkpoint_artifact(
+    checkpoint_path: str,
+    experiment: str,
+    val_bleu: float,
+    test_bleu: Optional[float] = None,
+) -> Optional[str]:
+    """
+    Upload the best-val-BLEU checkpoint to Weights & Biases as a model artifact.
+
+    Returns the artifact name if uploaded, else None.
+    """
+    if wandb.run is None:
+        return None
+    if not os.path.isfile(checkpoint_path):
+        print(f"WARNING: checkpoint not found at {checkpoint_path}, skipping W&B artifact upload")
+        return None
+
+    ckpt = torch.load(checkpoint_path, map_location="cpu")
+    metadata = {
+        "experiment": experiment,
+        "val_bleu": val_bleu,
+        "test_bleu": test_bleu,
+        "epoch": ckpt.get("epoch"),
+        "model_config": ckpt.get("model_config"),
+        "train_config": ckpt.get("train_config"),
+    }
+    artifact = wandb.Artifact(
+        name=f"best-model-{experiment}",
+        type="model",
+        description=(
+            f"Best checkpoint for {experiment} by validation BLEU "
+            f"(val={val_bleu:.2f}" + (f", test={test_bleu:.2f})" if test_bleu is not None else ")")
+        ),
+        metadata=metadata,
+    )
+    artifact.add_file(checkpoint_path, name="best_checkpoint.pt")
+    wandb.log_artifact(artifact)
+    print(f"Uploaded W&B artifact: {artifact.name} (val BLEU={val_bleu:.2f})")
+    return artifact.name
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -628,21 +739,24 @@ def run_training_experiment(experiment: str = 'exp1', quick_test: bool = False) 
             is_train=False, device=device, global_step=global_step,
             log_batch_metrics=log_batch_metrics,
         )
-        val_bleu = evaluate_bleu(model, val_loader, tgt_vocab=tgt_vocab, device=device)
+        val_bleu = evaluate_bleu(
+            model, val_loader, tgt_vocab=tgt_vocab, device=device, pad_idx=loss_fn.pad_idx
+        )
 
         epoch_time = time.time() - epoch_start
         print(
             f"Epoch {epoch+1}/{config['num_epochs']} - Train Loss: {train_loss:.4f} "
             f"- Val Loss: {val_loss:.4f} - Val BLEU: {val_bleu:.2f} - Time: {epoch_time:.2f}s"
         )
-        wandb.log(
-            {
-                'train_loss/epoch': train_loss,
-                'val_loss/epoch': val_loss,
-                'bleu/epoch': val_bleu,
-            },
-            step=global_step,
-        )
+        # All epoch metrics share the same training step (monotonic x-axis)
+        epoch_metrics = {
+            'train_loss/epoch': train_loss,
+            'val_loss/epoch': val_loss,
+            'bleu/epoch': val_bleu,
+        }
+        if log_lr:
+            epoch_metrics['learning_rate'] = _current_lr(optimizer)
+        _wandb_log(epoch_metrics, global_step)
         if log_attn_heatmaps and attn_vis_batch is not None:
             src_vis, tgt_vis = attn_vis_batch
             tgt_in_vis = tgt_vis[:, :-1]
@@ -666,7 +780,7 @@ def run_training_experiment(experiment: str = 'exp1', quick_test: bool = False) 
                 train_config=config,
             )
             print(f"  New best val BLEU: {best_bleu:.2f} → saved {best_checkpoint_path}")
-            wandb.log({'best_val_bleu': best_bleu}, step=global_step)
+            _wandb_log({'best_val_bleu': best_bleu}, global_step)
         else:
             epochs_without_improvement += 1
             print(
@@ -683,14 +797,31 @@ def run_training_experiment(experiment: str = 'exp1', quick_test: bool = False) 
 
     # Final BLEU evaluation on test set (best checkpoint)
     print(f"\n=== Final BLEU Evaluation (best checkpoint) ===")
-    if best_bleu >= 0:
+    test_bleu = 0.0
+    if os.path.isfile(best_checkpoint_path):
         load_checkpoint(best_checkpoint_path, model, optimizer, scheduler)
         print(f"Loaded best checkpoint (val BLEU={best_bleu:.2f})")
-    test_vocab = _make_tgt_vocab(test_dataset)
-    test_bleu = evaluate_bleu(model, test_loader, tgt_vocab=test_vocab, device=device)
-    print(f"Test BLEU: {test_bleu:.2f}")
-    wandb.log({'test_bleu': test_bleu, 'best_val_bleu': best_bleu}, step=global_step)
-    
+        test_vocab = _make_tgt_vocab(test_dataset)
+        test_bleu = evaluate_bleu(
+            model, test_loader, tgt_vocab=test_vocab, device=device, pad_idx=loss_fn.pad_idx
+        )
+        print(f"Test BLEU: {test_bleu:.2f}")
+    else:
+        print("WARNING: No best checkpoint saved during training; skipping test eval.")
+
+    _wandb_log({'test_bleu': test_bleu, 'best_val_bleu': best_bleu}, global_step)
+    if wandb.run is not None:
+        wandb.run.summary["best_val_bleu"] = best_bleu
+        wandb.run.summary["test_bleu"] = test_bleu
+        wandb.run.summary["best_checkpoint"] = best_checkpoint_path
+
+    _upload_best_checkpoint_artifact(
+        best_checkpoint_path,
+        experiment,
+        val_bleu=best_bleu,
+        test_bleu=test_bleu if os.path.isfile(best_checkpoint_path) else None,
+    )
+
     total_time = time.time() - start_time
     print(f"\nTotal training time: {total_time:.2f}s")
     wandb.finish()
