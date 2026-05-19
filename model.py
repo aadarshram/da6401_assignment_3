@@ -27,6 +27,10 @@ import torch.nn.functional as F
 # Google Drive file id for the released pretrained checkpoint (.pt)
 _PRETRAINED_CHECKPOINT_DRIVE_ID = "1pORECSfgjX-UaRhCMuXcTRGHLPOV7PPy"
 
+# Multi30k vocab sizes (bentrevett/multi30k, spacy blank tokenizers, train split)
+MULTI30K_SRC_VOCAB_SIZE = 18_669  # German (de)
+MULTI30K_TGT_VOCAB_SIZE = 9_797   # English (en)
+
 
 # ══════════════════════════════════════════════════════════════════════
 #   STANDALONE ATTENTION FUNCTION  
@@ -512,8 +516,8 @@ class Transformer(nn.Module):
     Full Encoder-Decoder Transformer for sequence-to-sequence tasks.
 
     Args:
-        src_vocab_size (int)  : Source vocabulary size.
-        tgt_vocab_size (int)  : Target vocabulary size.
+        src_vocab_size (int)  : Source vocabulary size (default: Multi30k de = 18669).
+        tgt_vocab_size (int)  : Target vocabulary size (default: Multi30k en = 9797).
         d_model        (int)  : Model dimensionality (default 512).
         N              (int)  : Number of encoder/decoder layers (default 6).
         num_heads      (int)  : Number of attention heads (default 8).
@@ -523,8 +527,8 @@ class Transformer(nn.Module):
 
     def __init__(
         self,
-        src_vocab_size: int,
-        tgt_vocab_size: int,
+        src_vocab_size: int = 18_669,
+        tgt_vocab_size: int = 9_797,
         d_model:   int   = 512,
         N:         int   = 6,
         num_heads: int   = 8,
