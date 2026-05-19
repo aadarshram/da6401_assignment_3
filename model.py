@@ -25,12 +25,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 # Google Drive file id for the released pretrained checkpoint (.pt)
-_PRETRAINED_CHECKPOINT_DRIVE_ID = "1pORECSfgjX-UaRhCMuXcTRGHLPOV7PPy"
+_PRETRAINED_CHECKPOINT_DRIVE_ID = "1eQ4_uIMU-3cmsSQvc_NhWlQ-qNEbem93"
 
 # Multi30k vocab sizes (bentrevett/multi30k, spacy blank tokenizers, train split)
 MULTI30K_SRC_VOCAB_SIZE = 18_669  # German (de)
 MULTI30K_TGT_VOCAB_SIZE = 9_797   # English (en)
-INFER_MAX_LEN = 40  # Multi30k targets are short; keeps autograder under 3s
+INFER_MAX_LEN = 40s
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -619,31 +619,32 @@ class Transformer(nn.Module):
         # Final linear layer to project decoder output to target vocab size
         self.output_projection = nn.Linear(d_model, tgt_vocab_size)
 
-        _DEFAULT_CKPT = os.path.join(os.path.dirname(__file__), "checkpoint.pt")
+        _root = os.path.dirname(__file__)
+        if checkpoint_path is None:
+            for name in ("model_weights.pt", "checkpoint.pt"):
+                candidate = os.path.join(_root, name)
+                if os.path.isfile(candidate):
+                    checkpoint_path = candidate
+                    break
 
-        # Use provided path or default path
-        checkpoint_path = checkpoint_path or _DEFAULT_CKPT
-
-        # Download if missing
-        if not os.path.isfile(checkpoint_path):
-            gdown.download(
-                id=_PRETRAINED_CHECKPOINT_DRIVE_ID,
-                output=checkpoint_path,
-                quiet=False,
-            )
-
-        ckpt = torch.load(checkpoint_path, map_location=torch.device("cpu"))
-        if isinstance(ckpt, dict) and "model_state_dict" in ckpt:
-            self.load_state_dict(ckpt["model_state_dict"])
-            self._checkpoint_meta = {
-                k: ckpt[k]
-                for k in ("epoch", "val_bleu", "model_config", "train_config")
-                if k in ckpt
-            }
-        else:
-            # Raw state dict fallback
-            self.load_state_dict(ckpt)
-            self._checkpoint_meta = None
+        if checkpoint_path is not None:
+            if not os.path.isfile(checkpoint_path):
+                gdown.download(
+                    id=_PRETRAINED_CHECKPOINT_DRIVE_ID,
+                    output=checkpoint_path,
+                    quiet=False,
+                )
+            ckpt = torch.load(checkpoint_path, map_location=torch.device("cpu"))
+            if isinstance(ckpt, dict) and "model_state_dict" in ckpt:
+                self.load_state_dict(ckpt["model_state_dict"])
+                self._checkpoint_meta = {
+                    k: ckpt[k]
+                    for k in ("epoch", "val_bleu", "model_config", "train_config")
+                    if k in ckpt
+                }
+            else:
+                self.load_state_dict(ckpt)
+                self._checkpoint_meta = None
 
         self._tokenizer = None  # lazy: fast Transformer() init for autograder
 

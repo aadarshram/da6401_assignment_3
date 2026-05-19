@@ -498,9 +498,9 @@ def load_checkpoint(
     device = next(model.parameters()).device
     ckpt_dict = torch.load(path, map_location=device)
     model.load_state_dict(ckpt_dict['model_state_dict'])
-    if optimizer is not None and ckpt_dict['optimizer_state_dict'] is not None:
+    if optimizer is not None and ckpt_dict.get('optimizer_state_dict') is not None:
         optimizer.load_state_dict(ckpt_dict['optimizer_state_dict'])
-    if scheduler is not None and ckpt_dict['scheduler_state_dict'] is not None:
+    if scheduler is not None and ckpt_dict.get('scheduler_state_dict') is not None:
         scheduler.load_state_dict(ckpt_dict['scheduler_state_dict'])
     return ckpt_dict['epoch']
 

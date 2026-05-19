@@ -35,14 +35,24 @@ Include in your zip:
 
 | File | Purpose |
 |------|---------|
-| `checkpoint.pt` | Trained weights (`save_checkpoint` format) |
+| `model_weights.pt` | Weights + `model_config` only (~265 MB) |
 | `vocab/multi30k_vocab.pt` | Fast infer tokenization |
 
-After training, copy your best file to the name the autograder expects:
+`checkpoint.pt` from training is ~775 MB (includes Adam state). Export weights only:
 
 ```bash
-cp best_checkpoint_exp1.pt checkpoint.pt
+python scripts/export_weights.py --src checkpoint.pt --dst model_weights.pt
 ```
 
-`Transformer()` auto-loads `checkpoint.pt` next to `model.py` if present; the autograder may also call `load_checkpoint("checkpoint.pt", model)`.
+GitHub rejects files over 100 MB — use **Git LFS**, host on Drive (gdown id in `model.py`), or submit `model_weights.pt` via the course portal.
+
+After training:
+
+```bash
+python scripts/export_weights.py --src best_checkpoint_exp1.pt --dst model_weights.pt
+# optional smaller fp16 copy (~133 MB, still over GitHub limit):
+python scripts/export_weights.py --src checkpoint.pt --dst model_weights.pt --fp16
+```
+
+`Transformer()` auto-loads `model_weights.pt` or `checkpoint.pt` if present.
 ```
