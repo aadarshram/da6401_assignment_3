@@ -30,7 +30,7 @@ _PRETRAINED_CHECKPOINT_DRIVE_ID = "1eQ4_uIMU-3cmsSQvc_NhWlQ-qNEbem93"
 # Multi30k vocab sizes (bentrevett/multi30k, spacy blank tokenizers, train split)
 MULTI30K_SRC_VOCAB_SIZE = 18_669  # German (de)
 MULTI30K_TGT_VOCAB_SIZE = 9_797   # English (en)
-INFER_MAX_LEN = 40s
+INFER_MAX_LEN = 40
 
 
 # ══════════════════════════════════════════════════════════════════════
